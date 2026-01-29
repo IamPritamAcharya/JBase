@@ -1,5 +1,7 @@
 package com.jbase.core.kv;
 
+import java.util.List;
+
 import com.jbase.core.index.BTree;
 
 public class KVStore {
@@ -20,6 +22,10 @@ public class KVStore {
 
     public void delete(byte[] key) {
         tree.insert(key, null);
+    }
+
+    public List<byte[]> scan() {
+        return tree.scan();
     }
 
 }

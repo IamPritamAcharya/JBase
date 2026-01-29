@@ -3,7 +3,9 @@ package com.jbase.core.index;
 import com.jbase.core.storage.MemStore;
 import com.jbase.core.storage.Page;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 public class BTree {
 
@@ -30,7 +32,7 @@ public class BTree {
         rootNode.isLeaf = true;
 
         rootPageId = root.getId();
-        NodeCache.put(rootPageId, rootNode);
+        writeNode(rootPageId, rootNode);
     }
 
     public byte[] search(byte[] key) {
@@ -38,38 +40,23 @@ public class BTree {
     }
 
     private byte[] searchRecursive(int pageId, byte[] key) {
-        BTreeNode node = NodeCache.get(pageId);
-
+        BTreeNode node = readNode(pageId);
         int idx = findKeyIndex(node.keys, key);
 
         if (node.isLeaf) {
-            if (idx < node.keys.size() &&
-                    Arrays.compare(node.keys.get(idx), key) == 0) {
+            if (idx < node.keys.size()
+                    && Arrays.compare(node.keys.get(idx), key) == 0) {
                 return node.values.get(idx);
             }
             return null;
-        } else {
-            int childIdx = idx;
-            if (idx < node.keys.size() &&
-                    Arrays.compare(key, node.keys.get(idx)) >= 0) {
-                childIdx = idx + 1;
-            }
-            return searchRecursive(node.children.get(childIdx), key);
-
         }
-    }
 
-    private int findKeyIndex(java.util.List<byte[]> keys, byte[] key) {
-        int low = 0, high = keys.size() - 1;
-        while (low <= high) {
-            int mid = (low + high) >>> 1;
-            int cmp = Arrays.compare(keys.get(mid), key);
-            if (cmp < 0)
-                low = mid + 1;
-            else
-                high = mid - 1;
+        int childIdx = idx;
+        if (idx < node.keys.size()
+                && Arrays.compare(key, node.keys.get(idx)) >= 0) {
+            childIdx = idx + 1;
         }
-        return low;
+        return searchRecursive(node.children.get(childIdx), key);
     }
 
     public void insert(byte[] key, byte[] value) {
@@ -85,14 +72,14 @@ public class BTree {
 
             Page rootPage = store.allocate();
             int newRootPageId = rootPage.getId();
-            NodeCache.put(newRootPageId, newRoot);
+            writeNode(newRootPageId, newRoot);
 
             rootPageId = newRootPageId;
         }
     }
 
     private SplitResult insertRecursive(int pageId, byte[] key, byte[] value) {
-        BTreeNode node = NodeCache.get(pageId);
+        BTreeNode node = readNode(pageId);
         int idx = findKeyIndex(node.keys, key);
 
         if (node.isLeaf) {
@@ -109,9 +96,10 @@ public class BTree {
             byte[] key,
             byte[] value) {
 
-        if (idx < node.keys.size() &&
-                java.util.Arrays.compare(node.keys.get(idx), key) == 0) {
+        if (idx < node.keys.size()
+                && Arrays.compare(node.keys.get(idx), key) == 0) {
             node.values.set(idx, value);
+            writeNode(pageId, node);
             return null;
         }
 
@@ -119,10 +107,10 @@ public class BTree {
         node.values.add(idx, value);
 
         if (node.keys.size() <= MAX_KEYS) {
+            writeNode(pageId, node);
             return null;
         }
 
-        // split leaf
         int mid = node.keys.size() / 2;
 
         BTreeNode right = new BTreeNode();
@@ -134,16 +122,15 @@ public class BTree {
         node.keys.subList(mid, node.keys.size()).clear();
         node.values.subList(mid, node.values.size()).clear();
 
-        // link leaves
         right.nextLeaf = node.nextLeaf;
 
         Page rightPage = store.allocate();
         int rightPageId = rightPage.getId();
-        NodeCache.put(rightPageId, right);
+        writeNode(rightPageId, right);
 
         node.nextLeaf = rightPageId;
+        writeNode(pageId, node);
 
-        // promote first key of right leaf
         return new SplitResult(right.keys.get(0), rightPageId);
     }
 
@@ -153,30 +140,29 @@ public class BTree {
             int idx,
             byte[] key,
             byte[] value) {
+
         int childIdx = idx;
-        if (idx < node.keys.size() &&
-                Arrays.compare(key, node.keys.get(idx)) >= 0) {
+        if (idx < node.keys.size()
+                && Arrays.compare(key, node.keys.get(idx)) >= 0) {
             childIdx = idx + 1;
         }
-        int childPageId = node.children.get(childIdx);
 
+        int childPageId = node.children.get(childIdx);
         SplitResult res = insertRecursive(childPageId, key, value);
 
         if (res == null) {
             return null;
         }
 
-        // insert promoted key + child
         node.keys.add(idx, res.promotedKey);
         node.children.add(idx + 1, res.rightPageId);
 
         if (node.keys.size() <= MAX_KEYS) {
+            writeNode(pageId, node);
             return null;
         }
 
-        // split internal node
         int mid = node.keys.size() / 2;
-
         byte[] promote = node.keys.get(mid);
 
         BTreeNode right = new BTreeNode();
@@ -190,9 +176,53 @@ public class BTree {
 
         Page rightPage = store.allocate();
         int rightPageId = rightPage.getId();
-        NodeCache.put(rightPageId, right);
+        writeNode(rightPageId, right);
+
+        writeNode(pageId, node);
 
         return new SplitResult(promote, rightPageId);
     }
 
+    public List<byte[]> scan() {
+        List<byte[]> result = new ArrayList<>();
+
+        int pageId = rootPageId;
+        BTreeNode node = readNode(pageId);
+
+        while (!node.isLeaf) {
+            pageId = node.children.get(0);
+            node = readNode(pageId);
+        }
+
+        while (true) {
+            result.addAll(node.keys);
+            if (node.nextLeaf == -1)
+                break;
+            node = readNode(node.nextLeaf);
+        }
+
+        return result;
+    }
+
+    private BTreeNode readNode(int pageId) {
+        return NodeSerializer.deserialize(store.get(pageId).getData());
+    }
+
+    private void writeNode(int pageId, BTreeNode node) {
+        byte[] data = NodeSerializer.serialize(node);
+        System.arraycopy(data, 0, store.get(pageId).getData(), 0, data.length);
+    }
+
+    private int findKeyIndex(List<byte[]> keys, byte[] key) {
+        int low = 0, high = keys.size() - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            int cmp = Arrays.compare(keys.get(mid), key);
+            if (cmp < 0)
+                low = mid + 1;
+            else
+                high = mid - 1;
+        }
+        return low;
+    }
 }
