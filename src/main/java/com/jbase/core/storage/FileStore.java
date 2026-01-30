@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
 
-public class FileStore {
+public class FileStore implements PageStore {
 
     private static final int PAGE_SIZE = Page.PAGE_SIZE;
 
@@ -16,22 +16,37 @@ public class FileStore {
         this.nextPageId = (int) (file.length() / PAGE_SIZE);
     }
 
-    public synchronized Page allocate() throws IOException {
-        int pageId = nextPageId++;
-        Page page = new Page(pageId);
-        write(page);
-        return page;
+    @Override
+    public synchronized Page allocate() {
+        try {
+            int pageId = nextPageId++;
+            Page page = new Page(pageId);
+            write(page);
+            return page;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    public synchronized Page get(int pageId) throws IOException {
-        Page page = new Page(pageId);
-        read(page);
-        return page;
+    @Override
+    public synchronized Page get(int pageId) {
+        try {
+            Page page = new Page(pageId);
+            read(page);
+            return page;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
-    public synchronized void write(Page page) throws IOException {
-        file.seek((long) page.getId() * PAGE_SIZE);
-        file.write(page.getData());
+    @Override
+    public synchronized void write(Page page) {
+        try {
+            file.seek((long) page.getId() * PAGE_SIZE);
+            file.write(page.getData());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public synchronized void read(Page page) throws IOException {
@@ -43,4 +58,11 @@ public class FileStore {
         file.close();
     }
 
+    @Override
+    public void free(int pageId) {
+    }
+
+    public boolean isEmpty() {
+        return nextPageId == 0;
+    }
 }

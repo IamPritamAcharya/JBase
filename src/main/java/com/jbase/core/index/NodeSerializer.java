@@ -26,9 +26,12 @@ public class NodeSerializer {
                 }
             }
         } else {
-            for (int child : node.children) {
-                buf.putInt(child);
+            int expectedChildren = node.keys.size() + 1;
+
+            for (int i = 0; i < expectedChildren; i++) {
+                buf.putInt(node.children.get(i));
             }
+
         }
 
         return buf.array();

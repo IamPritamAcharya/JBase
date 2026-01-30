@@ -1,7 +1,8 @@
 package com.jbase.core.index;
 
-import com.jbase.core.storage.MemStore;
+import com.jbase.core.storage.MetaPage;
 import com.jbase.core.storage.Page;
+import com.jbase.core.storage.PageStore;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,18 +22,31 @@ public class BTree {
         }
     }
 
-    private final MemStore store;
+    private final PageStore store;
+
     private int rootPageId;
 
-    public BTree(MemStore store) {
+    public BTree(PageStore store) {
         this.store = store;
 
-        Page root = store.allocate();
-        BTreeNode rootNode = new BTreeNode();
-        rootNode.isLeaf = true;
+        Page meta = store.get(0);
+        MetaPage metaPage = new MetaPage(meta.getData());
 
-        rootPageId = root.getId();
-        writeNode(rootPageId, rootNode);
+        int root = metaPage.getRootPageId();
+
+        if (root == -1) {
+
+            Page rootPage = store.allocate();
+            BTreeNode rootNode = new BTreeNode();
+            rootNode.isLeaf = true;
+
+            rootPageId = rootPage.getId();
+            writeNode(rootPageId, rootNode);
+
+            metaPage.setRootPageId(rootPageId);
+        } else {
+            rootPageId = root;
+        }
     }
 
     public byte[] search(byte[] key) {
@@ -41,6 +55,16 @@ public class BTree {
 
     private byte[] searchRecursive(int pageId, byte[] key) {
         BTreeNode node = readNode(pageId);
+
+        if (!node.isLeaf) {
+            for (int child : node.children) {
+                if (child == pageId) {
+                    throw new IllegalStateException(
+                            "Corrupt tree: self-referencing child at page " + pageId);
+                }
+            }
+        }
+
         int idx = findKeyIndex(node.keys, key);
 
         if (node.isLeaf) {
@@ -154,8 +178,10 @@ public class BTree {
             return null;
         }
 
-        node.keys.add(idx, res.promotedKey);
-        node.children.add(idx + 1, res.rightPageId);
+        int insertPos = node.children.indexOf(childPageId);
+
+        node.keys.add(insertPos, res.promotedKey);
+        node.children.add(insertPos + 1, res.rightPageId);
 
         if (node.keys.size() <= MAX_KEYS) {
             writeNode(pageId, node);
@@ -209,8 +235,10 @@ public class BTree {
     }
 
     private void writeNode(int pageId, BTreeNode node) {
+        Page page = store.get(pageId);
         byte[] data = NodeSerializer.serialize(node);
-        System.arraycopy(data, 0, store.get(pageId).getData(), 0, data.length);
+        System.arraycopy(data, 0, page.getData(), 0, data.length);
+        store.write(page);
     }
 
     private int findKeyIndex(List<byte[]> keys, byte[] key) {
