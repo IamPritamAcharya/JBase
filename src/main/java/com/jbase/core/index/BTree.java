@@ -34,7 +34,7 @@ public class BTree {
 
         int root = metaPage.getRootPageId();
 
-        if (root == -1) {
+        if (root == -1 || root == 0) {
 
             Page rootPage = store.allocate();
             BTreeNode rootNode = new BTreeNode();
@@ -44,6 +44,8 @@ public class BTree {
             writeNode(rootPageId, rootNode);
 
             metaPage.setRootPageId(rootPageId);
+            
+            store.write(meta);
         } else {
             rootPageId = root;
         }
@@ -175,10 +177,12 @@ public class BTree {
         SplitResult res = insertRecursive(childPageId, key, value);
 
         if (res == null) {
+            writeNode(pageId, node); // REQUIRED
             return null;
         }
 
-        int insertPos = node.children.indexOf(childPageId);
+        // ✅ FIX — USE childIdx DIRECTLY
+        int insertPos = childIdx;
 
         node.keys.add(insertPos, res.promotedKey);
         node.children.add(insertPos + 1, res.rightPageId);

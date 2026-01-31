@@ -4,10 +4,13 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
 public class NodeSerializer {
+    private static final int MAGIC = 0x4E4F4445;
+
     public static byte[] serialize(BTreeNode node) {
         ByteBuffer buf = ByteBuffer.allocate(4096);
-
+        buf.putInt(MAGIC); // Write Magic
         buf.put((byte) (node.isLeaf ? 1 : 0));
+
         buf.putInt(node.keys.size());
         buf.putInt(node.nextLeaf);
 
@@ -39,7 +42,10 @@ public class NodeSerializer {
 
     public static BTreeNode deserialize(byte[] data) {
         ByteBuffer buf = ByteBuffer.wrap(data);
-
+        int magic = buf.getInt();
+        if (magic != MAGIC) {
+            throw new IllegalStateException("Page is corrupt or uninitialized (Bad Magic Header)");
+        }
         BTreeNode node = new BTreeNode();
 
         node.isLeaf = buf.get() == 1;
