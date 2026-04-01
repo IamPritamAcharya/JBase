@@ -1,8 +1,19 @@
-# JBase
+# JBase – Disk-Backed Storage Engine ⚙️
+
+![Java](https://img.shields.io/badge/Java-21-orange)
+![Storage Engine](https://img.shields.io/badge/Type-Storage_Engine-blue)
+![Data Structure](https://img.shields.io/badge/Data%20Structure-B%2B_Tree-green)
+![Persistence](https://img.shields.io/badge/Persistence-Disk_Backed-red)
+![Pages](https://img.shields.io/badge/Page_Size-4KB-lightgrey)
+![Architecture](https://img.shields.io/badge/Architecture-Layered-purple)
+![Design](https://img.shields.io/badge/Focus-System_Design-critical)
+![Status](https://img.shields.io/badge/Status-Production_Ready-success)
+
+---
 
 **JBase** is a Java-based **disk-backed key–value storage engine** that implements a persistent **B+ tree index** over fixed-size pages.
 
-The project demonstrates a clean, layered design for building storage systems and focuses on correctness, persistence, and data structure integrity rather than external features.
+It is designed as a **low-level storage system**, focusing on correctness, persistence, and data structure integrity rather than external database features.
 
 ---
 
@@ -16,7 +27,7 @@ JBase implements the **core storage and indexing components** of a database engi
 * sorted key access and range scans
 * clean API separation
 
-This project is intentionally limited to the storage layer.
+This project is intentionally limited to the **storage layer**, similar to the foundational components of systems like embedded databases.
 
 ---
 
@@ -49,7 +60,7 @@ This project is intentionally limited to the storage layer.
 └────────────────────────┘
 ```
 
-Each layer is isolated by interfaces and communicates strictly through page IDs and byte arrays.
+Each layer is isolated via interfaces and communicates strictly through **page IDs and byte arrays**, ensuring clear separation of concerns.
 
 ---
 
@@ -57,7 +68,7 @@ Each layer is isolated by interfaces and communicates strictly through page IDs 
 
 ### Pages
 
-* Fixed size: **4096 bytes**
+* Fixed size: **4096 bytes (4KB)**
 * Identified by a monotonically increasing page ID
 * All disk I/O occurs at page granularity
 
@@ -65,7 +76,7 @@ Each layer is isolated by interfaces and communicates strictly through page IDs 
 Page ID → [ 4096 bytes ]
 ```
 
-Pages are immutable units of storage from the perspective of higher layers.
+Pages act as the fundamental unit of persistence.
 
 ---
 
@@ -80,7 +91,7 @@ Meta Page (Page 0)
 └────────────────────────┘
 ```
 
-The B+ tree root page ID is stored here and updated atomically.
+The root page ID is persisted explicitly, enabling full reconstruction of the tree.
 
 ---
 
@@ -92,7 +103,7 @@ The B+ tree root page ID is stored here and updated atomically.
 * Keys stored in sorted order
 * Values stored only in leaf nodes
 * Internal nodes contain page references only
-* Leaf nodes are linked for fast range scans
+* Leaf nodes are linked for efficient range scans
 
 ---
 
@@ -104,8 +115,7 @@ children: [ 3 |  7 |  9 | 12 ]   (page IDs)
 ```
 
 * Directs traversal
-* No data values stored
-* Children count is always `keys + 1`
+* Children count = keys + 1
 
 ---
 
@@ -117,9 +127,9 @@ values:   [ A |  B |  C ]
 nextLeaf: → page 14
 ```
 
-* Stores key–value pairs
+* Stores actual key–value pairs
 * Maintains sorted order
-* Linked to next leaf for sequential scans
+* Supports sequential access
 
 ---
 
@@ -129,7 +139,7 @@ nextLeaf: → page 14
 Leaf → Leaf → Leaf → Leaf
 ```
 
-Range scans are implemented as sequential traversal across leaf nodes.
+Enables efficient range scans via sequential traversal.
 
 ---
 
@@ -144,16 +154,16 @@ Each B+ tree node is serialized into a single page.
 │ keyCount (int)       │
 │ nextLeaf (int)       │
 │ keys[]               │
-│ values[] or children[]│
+│ values[] / children[]│
 └──────────────────────┘
 ```
 
 ### Magic Header
 
-A fixed magic value is written at the start of each node page to:
+Used to:
 
 * detect uninitialized pages
-* prevent accidental misinterpretation of raw data
+* prevent invalid deserialization
 * fail fast on corruption
 
 ---
@@ -173,7 +183,7 @@ FreeListPage
 └──────────────────────┘
 ```
 
-This prevents unbounded file growth and mirrors how production storage engines manage disk space.
+Prevents unbounded file growth and enables efficient page reuse.
 
 ---
 
@@ -188,8 +198,8 @@ delete(byte[] key)
 scan()
 ```
 
-* `delete` is implemented as a logical delete (value set to null)
-* `scan` returns keys in sorted order
+* `delete` is implemented as a logical delete
+* `scan` returns sorted keys
 * All operations are persisted immediately
 
 ---
@@ -223,9 +233,9 @@ KVStore.get
 
 * Deterministic page layout
 * No object references stored on disk
-* Tree structure fully reconstructable from disk state
+* Tree fully reconstructable from disk
 * Corruption detection via magic headers
-* Root location persisted explicitly
+* Root location explicitly persisted
 
 ---
 
@@ -238,7 +248,7 @@ This project demonstrates the ability to:
 * manage persistent state explicitly
 * serialize and deserialize complex structures
 * reason about storage invariants
-* debug recursive tree corruption issues
+* debug tree consistency and corruption issues
 
 ---
 
@@ -246,7 +256,4 @@ This project demonstrates the ability to:
 
 **Pritam Acharya**
 
-This project was built to demonstrate practical understanding of storage engines, indexing structures, and low-level database internals.
-
----
-
+This project demonstrates practical understanding of **storage engines, indexing structures, and database internals**.
